@@ -8,14 +8,20 @@
 
 #include <rapidcsv.h>
 
-#include "helpers.h"
 #include "markov.h"
+
+using namespace Cq;
 
 struct Word
 {
 	StdString name;
 	StdStringVector definitions;
 };
+
+void strToLowerCase(StdString &str)
+{
+	for(auto &ch : str) ch = std::tolower(ch);
+}
 
 bool operator<(const Word &w1, const Word &w2)
 {
@@ -36,6 +42,7 @@ int main(int argc, char *argv[])
 	rapidcsv::Document dictDoc(DICT_FILENAME);
 
 	StdStringVector words = dictDoc.GetColumn<StdString>("word");
+	for(auto &w : words) strToLowerCase(w);
 
 	std::println("# of words (non-unique) = {}", words.size());
 	std::set<Word, std::less<>> dict;
@@ -43,6 +50,7 @@ int main(int argc, char *argv[])
 	for (int i = 0; i < words.size(); ++i)
 	{
 		auto def = dictDoc.GetCell<StdString>("definition", i);
+		strToLowerCase(def);
 		auto found = dict.find({words[i], {}});
 		if (found != dict.end())
 		{
@@ -59,8 +67,8 @@ int main(int argc, char *argv[])
 	StdMap<StdString, StdStringVector> wordToCleanDefWords;
 	for (const auto &w : dict)
 	{
-		auto cleanDefSentences = Cq::Helpers::makeCleanSentences(w.definitions);
-		auto cleanDefWords = Cq::Helpers::makeCleanWords(cleanDefSentences);
+		auto cleanDefSentences = Helpers::makeCleanSentences(w.definitions);
+		auto cleanDefWords = Helpers::makeCleanWords(cleanDefSentences);
 		wordToCleanDefWords[w.name] = cleanDefWords;
 	}
 
@@ -69,42 +77,31 @@ int main(int argc, char *argv[])
 	std::random_device rd;
 	std::default_random_engine rne(rd());
 
-	const int N_GRAM = 2;
 	auto getRandDictWord = [&rne, &dict](void) {
 		StdVector<Word> randWords;
 		std::sample(dict.cbegin(), dict.cend(), std::back_inserter(randWords), 1, rne);
 		return randWords[0];
 	};
 
-	auto getRandModel = [&rne, &wordToCleanDefWords, &getRandDictWord](void) {
-		auto randWord = getRandDictWord();
-		return std::make_pair(randWord, Cq::Mental::makeMarkovModel(wordToCleanDefWords[randWord.name], N_GRAM));
-	};
-
-	auto getRandState = [&rne](const Cq::Mental::MarkovModel &model) {
-		Cq::Mental::MarkovModelStatePairVector randStates;
-		std::sample(model.cbegin(), model.cend(), std::back_inserter(randStates), 1, rne);
-		return randStates[0];
-	};
-
 	std::println("Picking a random word to generate a model from...");
-	Cq::Mental::MarkovModel curModel;
+	const int N_GRAM = 1;
+	Mental::MarkovChain curModel;
 	Word startingWord;
 	while (true)
 	{
 		startingWord = getRandDictWord();
 		std::println("Trying {}...", startingWord.name);
-		curModel = Cq::Mental::makeMarkovModel(wordToCleanDefWords[startingWord.name], N_GRAM);
-		if (curModel.size() != 0) break;
+
+		curModel.reset(wordToCleanDefWords[startingWord.name], N_GRAM);
+		if(!curModel.isEmpty()) break;
 	}
 
 	std::println("Starting model word = {}", startingWord.name);
-	std::println("{}", curModel);
-	StdString curState = getRandState(curModel).first;
-	//	StdString nextState = NO_WORD;
+	// std::println("{}", curModel);
+	StdString curState = curModel.getRandomState().first;
 	std::println("Initial state word = {}", curState);
 
-	if (Cq::Helpers::wordCount(curState) != N_GRAM)
+	if (Helpers::wordCount(curState) != N_GRAM)
 	{
 		std::println("Error: make sure that the initial curState is the same as N_GRAM!!!");
 		return -1;
@@ -116,49 +113,22 @@ int main(int argc, char *argv[])
 	std::println("Generating text...");
 	while (n < NUM_ITERS)
 	{
-		StdStringVector possibleWords;
-		const auto modelCurStateBegin = curModel[curState].cbegin();
-		const auto modelCurStateEnd = curModel[curState].cend();
+		StdString nextState = curModel.getPrediction(curState);
 
-		possibleWords.reserve(curModel[curState].size());
-		std::transform(modelCurStateBegin, modelCurStateEnd, std::back_inserter(possibleWords), [](auto tran) {
-			return tran.first;
-		});
-
-		if (possibleWords.size() == 0)
+		if (nextState == "")
 		{
-			curState = getRandState(curModel).first;
+			curState = curModel.getRandomState().first;
 			++n;
 			continue;
 		}
 
-		StdVector<float> probabilities;
-		probabilities.reserve(possibleWords.size());
-		std::transform(modelCurStateBegin, modelCurStateEnd, std::back_inserter(probabilities), [](auto tran) {
-			return tran.second;
-		});
-
-		StdVector<int> indices;
-		indices.reserve(possibleWords.size());
-
-		std::discrete_distribution<> dist(probabilities.cbegin(), probabilities.cend());
-		std::generate_n(std::back_inserter(indices), possibleWords.size(), [&dist, &rne]() {
-			return dist(rne);
-		});
-
-		StdStringVector randWords;
-		randWords.reserve(indices.size());
-		std::transform(indices.cbegin(), indices.cend(), std::back_inserter(randWords), [&possibleWords](auto i) {
-			return possibleWords[i];
-		});
-
-		curState = randWords[0];
-		text.append(curState + " ");
+		text.append(nextState + " ");
+		curState = nextState;
 
 		++n;
 	}
 
-	auto wc = Cq::Helpers::wordCount(text);
+	auto wc = Helpers::wordCount(text);
 	std::println("\n\nGenerated text (# of words = {}): \"{}\"", wc, text);
 
 	return 0;
