@@ -1,4 +1,5 @@
-#pragma once
+#ifndef CQ_LIB_MENTAL_HELPERS_H
+#define CQ_LIB_MENTAL_HELPERS_H
 
 #include <cstdio>
 #include <cmath>
@@ -8,6 +9,7 @@
 #include <print>
 #include <map>
 #include <unordered_map>
+#include <algorithm>
 #include <regex>
 #include <iterator>
 
@@ -238,3 +240,5 @@ namespace Cq
 	}
 */
 }
+
+#endif
