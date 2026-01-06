@@ -1,4 +1,7 @@
-#pragma once
+#ifndef CQ_LIB_MENTAL_MARKOV_H
+#define CQ_LIB_MENTAL_MARKOV_H
+
+#include <random>
 
 #include "helpers.h"
 
@@ -25,9 +28,28 @@ namespace Cq
 		using MarkovModelProbMap = StdMap<StdString, float>;
 		using MarkovModelStatePair = std::pair<StdString, MarkovModelProbMap>;
 		using MarkovModelStatePairVector = StdVector<MarkovModelStatePair>;
-		using MarkovModel = StdMap<StdString, MarkovModelProbMap>;
+		using MarkovModelMap = StdMap<StdString, MarkovModelProbMap>;
 
-		MarkovModel makeMarkovModel(const StdStringVector &lines, int nGram = 3);
-		StdString makeMarkovPrediction(const MarkovModel &m, const StdString &currentState);
+		class MarkovChain
+		{
+			private:
+				MarkovModelMap modelMap;
+				std::random_device rd;
+				std::default_random_engine rne;
+
+				MarkovModelMap makeModel(const StdStringVector &lines, int nGram = 3);
+			public:
+				MarkovChain(void) = default;
+				MarkovChain(const StdStringVector &dataSet, int nGram);
+
+				void reset(const StdStringVector &dataSet, int nGram);
+
+				MarkovModelStatePair getRandomState(void);
+				StdString getPrediction(const StdString &currentState);
+
+				bool isEmpty(void) const;
+			};
 	}
 }
+
+#endif

@@ -2,16 +2,20 @@
 
 #include <algorithm>
 #include <numeric>
-#include <random>
 
 namespace Cq::Mental
 {
-	MarkovModel makeMarkovModel(const StdStringVector &textLines, int nGram)
+	MarkovChain::MarkovChain(const StdStringVector &dataSet, int nGram)
+	{
+		modelMap = makeModel(dataSet, nGram);
+	}
+
+	MarkovModelMap MarkovChain::makeModel(const StdStringVector &textLines, int nGram)
 	{
 		auto cleanedLines = Helpers::makeCleanWords(Helpers::makeCleanSentences(textLines));
 		auto cleanedLinesSize = cleanedLines.size();
 
-		MarkovModel model;
+		MarkovModelMap model;
 		for (int i = 0; i < cleanedLinesSize - nGram; ++i)
 		{
 			StdString curState = NO_WORD, nextState = NO_WORD;
@@ -61,47 +65,59 @@ namespace Cq::Mental
 		return model;
 	}
 
-	StdString makeMarkovPrediction(const MarkovModel &model, const StdString &currentState)
+	void MarkovChain::reset(const StdStringVector &dataSet, int nGram)
 	{
-		StdStringVector possibleWords;
-		auto modelState = model.at(currentState);
+		modelMap = makeModel(dataSet, nGram);
+	}
+
+	MarkovModelStatePair MarkovChain::getRandomState(void)
+	{
+		MarkovModelStatePairVector randStates;
+		std::sample(modelMap.cbegin(), modelMap.cend(), std::back_inserter(randStates), 1, rne);
+		return randStates[0];
+	}
+
+	StdString MarkovChain::getPrediction(const StdString &currentState)
+	{
+		if(modelMap.find(currentState) == modelMap.end()) return "";
+
+		auto modelState = modelMap.at(currentState);
 		const auto modelCurStateBegin = modelState.cbegin();
 		const auto modelCurStateEnd = modelState.cend();
 
+		StdStringVector possibleWords;
 		possibleWords.reserve(modelState.size());
-		std::transform(modelCurStateBegin, modelCurStateEnd, std::back_inserter(possibleWords), [](auto tran) {
+		std::transform(modelCurStateBegin, modelCurStateEnd, std::back_inserter(possibleWords), [](const auto tran) {
 			return tran.first;
 		});
 
-		if (possibleWords.size() == 0)
-		{
-			return "";
-			// curState = getRandState(curModel).first;
-			// ++n;
-		}
+		if(possibleWords.size() == 0) return "";
 
 		StdVector<float> probabilities;
 		probabilities.reserve(possibleWords.size());
-		std::transform(modelCurStateBegin, modelCurStateEnd, std::back_inserter(probabilities), [](auto tran) {
+		std::transform(modelCurStateBegin, modelCurStateEnd, std::back_inserter(probabilities), [](const auto tran) {
 			return tran.second;
 		});
 
 		StdVector<int> indices;
 		indices.reserve(possibleWords.size());
 
-		std::random_device rd;
-		std::default_random_engine rne(rd());
 		std::discrete_distribution<> dist(probabilities.cbegin(), probabilities.cend());
-		std::generate_n(std::back_inserter(indices), possibleWords.size(), [&dist, &rne]() {
+		std::generate_n(std::back_inserter(indices), possibleWords.size(), [&dist, this]() {
 			return dist(rne);
 		});
 
 		StdStringVector randWords;
 		randWords.reserve(indices.size());
-		std::transform(indices.cbegin(), indices.cend(), std::back_inserter(randWords), [&possibleWords](auto i) {
+		std::transform(indices.cbegin(), indices.cend(), std::back_inserter(randWords), [&possibleWords](const auto i) {
 			return possibleWords[i];
 		});
 
 		return randWords[0];
+	}
+
+	bool MarkovChain::isEmpty(void) const
+	{
+		return modelMap.empty();
 	}
 }
