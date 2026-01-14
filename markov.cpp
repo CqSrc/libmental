@@ -5,30 +5,31 @@
 
 namespace Cq::Mental
 {
-	MarkovChain::MarkovChain(const StdStringVector &dataSet, int nGram)
+	MarkovChain::MarkovChain(const StdStringVector &dataSet, const int nGram)
 	{
 		modelMap = makeModel(dataSet, nGram);
+		this->nGram = nGram;
 	}
 
-	MarkovModelMap MarkovChain::makeModel(const StdStringVector &textLines, int nGram)
+	MarkovModelMap MarkovChain::makeModel(const StdStringVector &textLines, const int nGram)
 	{
 		auto cleanedLines = Helpers::makeCleanWords(Helpers::makeCleanSentences(textLines));
 		auto cleanedLinesSize = cleanedLines.size();
 
 		MarkovModelMap model;
-		for (int i = 0; i < cleanedLinesSize - nGram; ++i)
+		for(int i = 0; i < cleanedLinesSize - nGram; ++i)
 		{
 			StdString curState = NO_WORD, nextState = NO_WORD;
-			for (int j = 0; j < nGram; ++j)
+			for(int j = 0; j < nGram; ++j)
 			{
 				int curIndex = i + j;
-				if (curIndex < cleanedLinesSize)
+				if(curIndex < cleanedLinesSize)
 				{
 					curState.append(cleanedLines[curIndex] + " ");
 				}
 
 				int nextIndex = i + j + nGram;
-				if (nextIndex < cleanedLinesSize)
+				if(nextIndex < cleanedLinesSize)
 				{
 					nextState.append(cleanedLines[nextIndex] + " ");
 				}
@@ -37,11 +38,11 @@ namespace Cq::Mental
 			Helpers::trim(curState);
 			Helpers::trim(nextState);
 
-			if (model.find(curState) == model.end())
+			if(model.find(curState) == model.end())
 			{
 				model[curState] = {{nextState, 1.0f}};
 			} else {
-				if (model[curState].find(nextState) != model[curState].end())
+				if(model[curState].find(nextState) != model[curState].end())
 				{
 					model[curState][nextState] += 1.0f;
 				} else {
@@ -50,13 +51,13 @@ namespace Cq::Mental
 			}
 		}
 
-		for (const auto &[curState, transition] : model)
+		for(const auto &[curState, transition] : model)
 		{
 			float total = std::accumulate(transition.cbegin(), transition.cend(), 0.0f, [](auto curSum, auto tran) {
 				return curSum + tran.second;
 			});
 
-			for (const auto &[state, count] : transition)
+			for(const auto &[state, count] : transition)
 			{
 				model[curState][state] = count / total;
 			}
@@ -65,16 +66,65 @@ namespace Cq::Mental
 		return model;
 	}
 
-	void MarkovChain::reset(const StdStringVector &dataSet, int nGram)
+	MarkovModelMap MarkovChain::makeModelFromWord(const Word &word, const int nGram)
+	{
+		return makeModel(word.definitions, nGram);
+	}
+
+	void MarkovChain::reset(const StdStringVector &dataSet, const int nGram)
 	{
 		modelMap = makeModel(dataSet, nGram);
+		this->nGram = nGram;
+	}
+
+	void MarkovChain::addWordToDictionary(const Word &word)
+	{
+		dict.insert(word);
+	}
+
+	const MarkovModelMap &MarkovChain::getModel(void) const
+	{
+		return modelMap;
+	}
+
+	const Dictionary &MarkovChain::getDictionary(void) const
+	{
+		return dict;
+	}
+
+	WordVector MarkovChain::getRandomWordsFromDictionary(const int numWords)
+	{
+		WordVector randWords;
+		randWords.reserve(numWords);
+		std::sample(dict.cbegin(), dict.cend(), std::back_inserter(randWords), numWords, rne);
+		return randWords;
+	}
+
+	MarkovModelProbMap MarkovChain::getProbMapForWord(const StdString &wordName)
+	{
+		if(modelMap.find(wordName) == modelMap.end()) return {};
+		return modelMap.at(wordName);
+	}
+
+	StdPair<StdString, float> MarkovChain::getRandomStateForWord(const StdString &wordName)
+	{
+		auto probMap = getProbMapForWord(wordName);
+		StdVector<StdPair<StdString, float>> randProbs;
+		std::sample(probMap.cbegin(), probMap.cend(), std::back_inserter(randProbs), 1, rne);
+		return randProbs[0];
 	}
 
 	MarkovModelStatePair MarkovChain::getRandomState(void)
 	{
+		return getRandomStates(1)[0];
+	}
+
+	MarkovModelStatePairVector MarkovChain::getRandomStates(const int numStates)
+	{
 		MarkovModelStatePairVector randStates;
-		std::sample(modelMap.cbegin(), modelMap.cend(), std::back_inserter(randStates), 1, rne);
-		return randStates[0];
+		randStates.reserve(numStates);
+		std::sample(modelMap.cbegin(), modelMap.cend(), std::back_inserter(randStates), numStates, rne);
+		return randStates;
 	}
 
 	StdString MarkovChain::getPrediction(const StdString &currentState)
@@ -114,6 +164,21 @@ namespace Cq::Mental
 		});
 
 		return randWords[0];
+	}
+
+	void MarkovChain::setNGramSize(int nGram)
+	{
+		this->nGram = nGram;
+	}
+
+	void MarkovChain::setDictionary(const Dictionary &dict)
+	{
+		this->dict = dict;
+		StdStringVector definitions;
+		for(const auto &word : this->dict)
+			definitions.insert(definitions.end(), word.definitions.begin(), word.definitions.end());
+
+		reset(definitions, nGram);
 	}
 
 	bool MarkovChain::isEmpty(void) const

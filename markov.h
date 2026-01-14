@@ -4,6 +4,7 @@
 #include <random>
 
 #include "helpers.h"
+#include "word.h"
 
 #define NO_WORD ""
 
@@ -28,24 +29,43 @@ namespace Cq
 		using MarkovModelProbMap = StdMap<StdString, float>;
 		using MarkovModelStatePair = std::pair<StdString, MarkovModelProbMap>;
 		using MarkovModelStatePairVector = StdVector<MarkovModelStatePair>;
-		using MarkovModelMap = StdMap<StdString, MarkovModelProbMap>;
+
+		using Dictionary = StdSet<Word, std::less<>>;
+		using MarkovModelMap = StdUnorderedMap<StdString, MarkovModelProbMap>;
+
+		using WordVector = StdVector<Word>;
 
 		class MarkovChain
 		{
 			private:
 				MarkovModelMap modelMap;
+				int nGram = 1;
+				Dictionary dict;
 				std::random_device rd;
-				std::default_random_engine rne;
+				std::default_random_engine rne{rd()};
 
-				MarkovModelMap makeModel(const StdStringVector &lines, int nGram = 3);
+				static MarkovModelMap makeModel(const StdStringVector &lines, const int nGram = 3);
+				static MarkovModelMap makeModelFromWord(const Word &word, const int nGram);
 			public:
 				MarkovChain(void) = default;
-				MarkovChain(const StdStringVector &dataSet, int nGram);
+				MarkovChain(const StdStringVector &dataSet, const int nGram);
 
-				void reset(const StdStringVector &dataSet, int nGram);
+				void reset(const StdStringVector &dataSet, const int nGram);
+				void addWordToDictionary(const Word &word);
 
+				const MarkovModelMap &getModel(void) const;
+				const Dictionary &getDictionary(void) const;
+				WordVector getRandomWordsFromDictionary(const int numWords);
+				MarkovModelProbMap getProbMapForWord(const StdString &wordName);
+
+				StdPair<StdString, float> getRandomStateForWord(const StdString &wordName);
 				MarkovModelStatePair getRandomState(void);
+				MarkovModelStatePairVector getRandomStates(const int numStates);
+
 				StdString getPrediction(const StdString &currentState);
+
+				void setNGramSize(int nGram);
+				void setDictionary(const Dictionary &dict);
 
 				bool isEmpty(void) const;
 			};

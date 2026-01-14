@@ -21,8 +21,23 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(rapidcsv)
 
+option(USE_CLEANED_DICT "Enable to use cleaned dictionary file (cleaned-csvdict.csv)" OFF)
+
 add_executable(mental)
 target_sources(mental PRIVATE markov.cpp main.cpp)
 target_compile_options(mental PRIVATE -O3)
+target_compile_definitions(mental PRIVATE SHOULD_USE_CLEANED_DICT)
 # target_link_libraries(mental PRIVATE foonathan::lexy rapidcsv)
 target_link_libraries(mental PRIVATE rapidcsv)
+
+add_executable(mental-uncleaned)
+target_sources(mental-uncleaned PRIVATE markov.cpp main.cpp)
+target_compile_options(mental-uncleaned PRIVATE -O3)
+# target_link_libraries(mental PRIVATE foonathan::lexy rapidcsv)
+target_link_libraries(mental-uncleaned PRIVATE rapidcsv)
+
+
+# add_executable(cleancsv)
+# target_sources(cleancsv PRIVATE markov.cpp cleancsv.cpp)
+# target_compile_options(cleancsv PRIVATE -O3)
+# target_link_libraries(cleancsv PRIVATE rapidcsv)

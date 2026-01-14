@@ -9,6 +9,7 @@
 #include <print>
 #include <map>
 #include <unordered_map>
+#include <set>
 #include <algorithm>
 #include <regex>
 #include <iterator>
@@ -25,6 +26,12 @@ using StdPair = std::pair<FirstType, SecondType>;
 
 template <typename KeyType, typename ValueType>
 using StdMap = std::map<KeyType, ValueType>;
+
+template<typename KeyType, typename ValueType>
+using StdMultiMap = std::multimap<KeyType, ValueType>;
+
+template<typename KeyType, typename... Rest>
+using StdSet = std::set<KeyType, Rest...>;
 
 template <typename KeyType, typename ValueType>
 using StdUnorderedMap = std::unordered_map<KeyType, ValueType>;
@@ -54,6 +61,11 @@ namespace Cq
 		{
 			ltrim(s);
 			rtrim(s);
+		}
+		
+		static inline void strToLowerCase(StdString &str)
+		{
+			for(auto &ch : str) ch = std::tolower(ch);
 		}
 
 		static inline StdStringVector makeCleanWords(const StdStringVector &lines)

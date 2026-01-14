@@ -9,99 +9,103 @@
 #include <rapidcsv.h>
 
 #include "markov.h"
+#include "word.h"
 
 using namespace Cq;
 
-struct Word
-{
-	StdString name;
-	StdStringVector definitions;
-};
-
-void strToLowerCase(StdString &str)
-{
-	for(auto &ch : str) ch = std::tolower(ch);
-}
-
-bool operator<(const Word &w1, const Word &w2)
-{
-	return w1.name < w2.name;
-}
-
 int main(int argc, char *argv[])
 {
-	if (argc < 2)
-	{
-		std::println("Enter a dictionary filename!!!");
-		return -1;
-	}
+	// if(argc < 2)
+	// {
+	// 	std::println("Enter a dictionary filename!!!");
+	// 	return -1;
+	// }
 
-	const auto DICT_FILENAME = argv[1];
+#ifdef SHOULD_USE_CLEANED_DICT
+	const auto DICT_FILENAME = "cleaned-csvdict.csv";
+#else
+	const auto DICT_FILENAME = "csvdict.csv";
+#endif
+
+	// const auto DICT_FILENAME = argv[1];
 	//	const auto DICT_FILENAME = "testdict.csv";
 	//	const auto DICT_FILENAME = "dict.csv";
+	std::println("Using {} dictionary file", DICT_FILENAME);
 	rapidcsv::Document dictDoc(DICT_FILENAME);
 
-	StdStringVector words = dictDoc.GetColumn<StdString>("word");
-	for(auto &w : words) strToLowerCase(w);
-
-	std::println("# of words (non-unique) = {}", words.size());
-	std::set<Word, std::less<>> dict;
-
-	for (int i = 0; i < words.size(); ++i)
+	StdStringVector csvWords = dictDoc.GetColumn<StdString>("word");
+	// StdStringVector csvDefs = dictDoc.GetColumn<StdString>("definition");
+#ifndef SHOULD_USE_CLEANED_DICT
+	for(auto &w : csvWords)
 	{
-		auto def = dictDoc.GetCell<StdString>("definition", i);
-		strToLowerCase(def);
-		auto found = dict.find({words[i], {}});
-		if (found != dict.end())
+		Helpers::trim(w);
+		Helpers::strToLowerCase(w);
+	}
+
+	// for(auto &def : csvDefs)
+	// {
+	// 	Helpers::trim(def);
+	// 	Helpers::strToLowerCase(def);
+	// }
+#endif
+
+	std::println("# of words (non-unique) = {}", csvWords.size());
+	Mental::Dictionary dict;
+	for(int i = 0; i < csvWords.size(); ++i)
+	{
+		auto wordName = csvWords[i];
+		// auto wordDef = csvDefs[i];
+		auto wordDef = dictDoc.GetCell<StdString>("definition", i);
+
+#ifndef SHOULD_USE_CLEANED_DICT
+		Helpers::strToLowerCase(wordDef);
+#endif
+
+		auto found = dict.find({wordName, {}});
+		if(found != dict.end())
 		{
 			auto newDefs = found->definitions;
-			newDefs.push_back(def);
+			newDefs.push_back(wordDef);
 			dict.erase(*found);
-			dict.insert({words[i], newDefs});
-		} else dict.insert({words[i], {def}});
+			dict.insert({wordName, newDefs});
+		} else dict.insert({wordName, {wordDef}});
 	}
 
 	std::println("# of dictionary words = {}", dict.size());
 
-	std::println("Cleaning up definitions...");
-	StdMap<StdString, StdStringVector> wordToCleanDefWords;
-	for (const auto &w : dict)
-	{
-		auto cleanDefSentences = Helpers::makeCleanSentences(w.definitions);
-		auto cleanDefWords = Helpers::makeCleanWords(cleanDefSentences);
-		wordToCleanDefWords[w.name] = cleanDefWords;
-	}
-
-	std::println("Done cleaning definitions");
-
-	std::random_device rd;
-	std::default_random_engine rne(rd());
-
-	auto getRandDictWord = [&rne, &dict](void) {
-		StdVector<Word> randWords;
-		std::sample(dict.cbegin(), dict.cend(), std::back_inserter(randWords), 1, rne);
-		return randWords[0];
-	};
-
-	std::println("Picking a random word to generate a model from...");
 	const int N_GRAM = 1;
-	Mental::MarkovChain curModel;
-	Word startingWord;
-	while (true)
+	Mental::MarkovChain markovChain;
+	markovChain.setNGramSize(N_GRAM);
+	Mental::Dictionary subDict;
+	for(int i = 0; i < 10000; ++i)
 	{
-		startingWord = getRandDictWord();
-		std::println("Trying {}...", startingWord.name);
-
-		curModel.reset(wordToCleanDefWords[startingWord.name], N_GRAM);
-		if(!curModel.isEmpty()) break;
+		auto w = dict.find({csvWords[i], {}});
+		subDict.insert(*w);
 	}
 
-	std::println("Starting model word = {}", startingWord.name);
-	// std::println("{}", curModel);
-	StdString curState = curModel.getRandomState().first;
-	std::println("Initial state word = {}", curState);
+	markovChain.setDictionary(subDict);
+	// markovChain.setDictionary(dict);
+	std::println("# of model states = {}", markovChain.getModel().size());
 
-	if (Helpers::wordCount(curState) != N_GRAM)
+	std::println("Picking a random state to generate a model from...");
+	StdString startingStateStr;
+	while(true)
+	{
+		auto randState = markovChain.getRandomState();
+
+		std::println("Trying {}...", randState.first);
+		if(!randState.second.empty())
+		{
+			startingStateStr = randState.first;
+			break;
+		}
+	}
+
+	std::println("Starting model state = {}", startingStateStr);
+	StdString curState = startingStateStr;
+	std::println("Initial state = {}", curState);
+
+	if(Helpers::wordCount(curState) != N_GRAM)
 	{
 		std::println("Error: make sure that the initial curState is the same as N_GRAM!!!");
 		return -1;
@@ -109,15 +113,22 @@ int main(int argc, char *argv[])
 
 	StdString text = curState + " ";
 	int n = 0;
-	const int NUM_ITERS = 500;
+	const int NUM_ITERS = 10000;
 	std::println("Generating text...");
-	while (n < NUM_ITERS)
+	while(n < NUM_ITERS)
 	{
-		StdString nextState = curModel.getPrediction(curState);
+		StdString nextState = markovChain.getPrediction(curState);
 
-		if (nextState == "")
+		if(nextState == "")
 		{
-			curState = curModel.getRandomState().first;
+			auto randState = markovChain.getRandomState();
+			while(randState.second.empty())
+			{
+				randState = markovChain.getRandomState();
+			}
+
+			curState = randState.first;
+			text.append(curState + " ");
 			++n;
 			continue;
 		}
